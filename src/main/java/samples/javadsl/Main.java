@@ -133,7 +133,7 @@ public class Main {
 
         return reading.thenCompose(
                 ms -> {
-                    ms.forEach(m -> System.out.println("read " + m));
+                    ms.forEach(m -> System.out.println("a beautiful movie had been read:" + m));
                     try {
                         elasticsearchClient.close();
                     } catch (IOException e) {
