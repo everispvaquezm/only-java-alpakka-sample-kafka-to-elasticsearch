@@ -4,29 +4,13 @@
 
 package samples.javadsl;
 
-import java.io.IOException;
-import java.time.Duration;
-import java.util.Arrays;
-import java.util.List;
-import java.util.concurrent.CompletionStage;
-import java.util.concurrent.TimeUnit;
-// #imports
-
-import org.apache.http.HttpHost;
-import org.apache.kafka.clients.consumer.ConsumerConfig;
-import org.apache.kafka.common.serialization.IntegerDeserializer;
-import org.apache.kafka.common.serialization.StringDeserializer;
-import org.elasticsearch.client.RestClient;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-// #imports
-
 import akka.Done;
 import akka.NotUsed;
 import akka.actor.ActorSystem;
 import akka.actor.Terminated;
+import akka.japi.Pair;
 import akka.kafka.CommitterSettings;
+import akka.kafka.ConsumerMessage;
 import akka.kafka.ConsumerSettings;
 import akka.kafka.Subscriptions;
 import akka.kafka.javadsl.Committer;
@@ -37,6 +21,24 @@ import akka.stream.alpakka.elasticsearch.ElasticsearchWriteSettings;
 import akka.stream.alpakka.elasticsearch.WriteMessage;
 import akka.stream.alpakka.elasticsearch.javadsl.ElasticsearchFlow;
 import akka.stream.javadsl.Keep;
+import org.apache.http.HttpHost;
+import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.common.serialization.IntegerDeserializer;
+import org.apache.kafka.common.serialization.StringDeserializer;
+import org.elasticsearch.client.RestClient;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.IOException;
+import java.time.Duration;
+import java.util.Arrays;
+import java.util.List;
+import java.util.UUID;
+import java.util.concurrent.CompletionStage;
+import java.util.concurrent.TimeUnit;
+
+// #imports
+// #imports
 
 public class Main {
 
@@ -46,11 +48,10 @@ public class Main {
     private final String elasticsearchAddress;
     private final String kafkaBootstrapServers;
 
-    private final String topic = "movies-to-elasticsearch";
-    private final String groupId = "docs-group";
+    private final String topic = "movements-to-elasticsearch";
 
-    // #es-setup
-    private final String indexName = "movies";
+  // #es-setup
+    private final String indexName = "movements";
 
     // #es-setup
 
@@ -67,7 +68,8 @@ public class Main {
     private Consumer.DrainingControl<Done> readFromKafkaToEleasticsearch() {
         // #kafka-setup
         // configure Kafka consumer (1)
-        ConsumerSettings<Integer, String> kafkaConsumerSettings =
+      String groupId = "docs-group";
+      ConsumerSettings<Integer, String> kafkaConsumerSettings =
                 ConsumerSettings.create(actorSystem, new IntegerDeserializer(), new StringDeserializer())
                         .withBootstrapServers(kafkaBootstrapServers)
                         .withGroupId(groupId)
@@ -76,41 +78,39 @@ public class Main {
         // #kafka-setup
 
         // #flow
-        Consumer.DrainingControl<Done> control =
-                Consumer.committableSource(kafkaConsumerSettings, Subscriptions.topics(topic)) // (5)
-                        .asSourceWithContext(cm -> cm.committableOffset()) // (6)
-                        .map(cm -> cm.record())
-                        .map(
-                                consumerRecord -> { // (7)
-                                    Movie movie = JsonMappers.movieReader.readValue(consumerRecord.value());
-                                    return WriteMessage.createUpsertMessage(String.valueOf(movie.id), movie);
-                                })
-                        .via(
-                                ElasticsearchFlow.createWithContext(
-                                        indexName,
-                                        "_doc",
-                                        ElasticsearchWriteSettings.create(),
-                                        elasticsearchClient,
-                                        JsonMappers.mapper)) // (8)
-                        .map(
-                                writeResult -> { // (9)
-                                    writeResult
-                                            .getError()
-                                            .ifPresent(
-                                                    errorJson -> {
-                                                        throw new RuntimeException(
-                                                                "Elasticsearch update failed "
-                                                                        + writeResult.getErrorReason().orElse(errorJson));
-                                                    });
-                                    return NotUsed.notUsed();
-                                })
-                        .asSource() // (10)
-                        .map(pair -> pair.second())
-                        .toMat(Committer.sink(CommitterSettings.create(actorSystem)), Keep.both()) // (11)
-                        .mapMaterializedValue(Consumer::createDrainingControl) // (12)
-                        .run(materializer);
-        // #flow
-        return control;
+      // #flow
+        return Consumer.committableSource(kafkaConsumerSettings, Subscriptions.topics(topic)) // (5)
+                .asSourceWithContext(ConsumerMessage.CommittableMessage::committableOffset) // (6)
+                .map(ConsumerMessage.CommittableMessage::record)
+                .map(
+                        consumerRecord -> { // (7)
+                            Movement movement = JsonMappers.movementReader.readValue(consumerRecord.value());
+                            return WriteMessage.createUpsertMessage(String.valueOf(movement.iban), movement);
+                        })
+                .via(
+                        ElasticsearchFlow.createWithContext(
+                                indexName,
+                                "_doc",
+                                ElasticsearchWriteSettings.create(),
+                                elasticsearchClient,
+                                JsonMappers.mapper)) // (8)
+                .map(
+                        writeResult -> { // (9)
+                            writeResult
+                                    .getError()
+                                    .ifPresent(
+                                            errorJson -> {
+                                                throw new RuntimeException(
+                                                        "Elasticsearch update failed "
+                                                                + writeResult.getErrorReason().orElse(errorJson));
+                                            });
+                            return NotUsed.notUsed();
+                        })
+                .asSource() // (10)
+                .map(Pair::second)
+                .toMat(Committer.sink(CommitterSettings.create(actorSystem)), Keep.both()) // (11)
+                .mapMaterializedValue(Consumer::createDrainingControl) // (12)
+                .run(materializer);
     }
 
     private CompletionStage<Terminated> run() throws Exception {
@@ -121,19 +121,21 @@ public class Main {
         elasticsearchClient = RestClient.builder(HttpHost.create(elasticsearchAddress)).build();
         // #es-setup
 
-        List<Movie> movies = Arrays.asList(new Movie(23, "Psycho"), new Movie(423, "Citizen Kane"));
-        CompletionStage<Done> writing = helper.writeToKafka(topic, movies, actorSystem, materializer);
+        List<Movement> movements = Arrays.asList(
+          new Movement((int) (Math.random() * 100), UUID.randomUUID().toString(), 100d),
+          new Movement((int) (Math.random() * 100), UUID.randomUUID().toString(), 300d));
+        CompletionStage<Done> writing = helper.writeToKafka(topic, movements, actorSystem, materializer);
         writing.toCompletableFuture().get(10, TimeUnit.SECONDS);
 
         Consumer.DrainingControl<Done> control = readFromKafkaToEleasticsearch();
         TimeUnit.SECONDS.sleep(5);
         CompletionStage<Done> copyingFinished = control.drainAndShutdown(actorSystem.dispatcher());
         copyingFinished.toCompletableFuture().get(10, TimeUnit.SECONDS);
-        CompletionStage<List<Movie>> reading = helper.readFromElasticsearch(elasticsearchClient, indexName, actorSystem, materializer);
+        CompletionStage<List<Movement>> reading = helper.readFromElasticsearch(elasticsearchClient, indexName, materializer);
 
         return reading.thenCompose(
                 ms -> {
-                    ms.forEach(m -> System.out.println("a beautiful movie had been read:" + m));
+                    ms.forEach(m -> System.out.println("An account movement has been read:" + m));
                     try {
                         elasticsearchClient.close();
                     } catch (IOException e) {
@@ -149,8 +151,6 @@ public class Main {
         helper.startContainers();
         Main main = new Main(helper);
         CompletionStage<Terminated> run = main.run();
-        run.thenAccept(res -> {
-            helper.stopContainers();
-        });
+        run.thenAccept(res -> helper.stopContainers());
     }
 }

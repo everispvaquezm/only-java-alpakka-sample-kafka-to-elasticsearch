@@ -6,6 +6,7 @@ import akka.kafka.ProducerSettings;
 import akka.kafka.javadsl.Producer;
 import akka.stream.Materializer;
 import akka.stream.alpakka.elasticsearch.ElasticsearchSourceSettings;
+import akka.stream.alpakka.elasticsearch.ReadResult;
 import akka.stream.alpakka.elasticsearch.javadsl.ElasticsearchSource;
 import akka.stream.javadsl.Sink;
 import akka.stream.javadsl.Source;
@@ -28,7 +29,7 @@ public class Helper {
     private ElasticsearchContainer elasticsearchContainer;
     public String elasticsearchAddress;
 
-    private KafkaContainer kafka;
+    private KafkaContainer kafkaContainer;
     public String kafkaBootstrapServers;
 
     public Helper() {
@@ -38,53 +39,50 @@ public class Helper {
         elasticsearchContainer =
                 new ElasticsearchContainer("docker.elastic.co/elasticsearch/elasticsearch-oss:6.4.3");
         elasticsearchContainer.start();
-        elasticsearchAddress = elasticsearchContainer.getHttpHostAddress();
+        elasticsearchAddress = elasticsearchContainer.getHttpHostAddress(); //TODO maybe this could be changed to a hardcoded address like localhost:5681
 
-        kafka = new KafkaContainer("5.1.2"); // contains Kafka 2.1.x
-        kafka.start();
-        kafkaBootstrapServers = kafka.getBootstrapServers();
+        kafkaContainer = new KafkaContainer("5.1.2"); // contains Kafka 2.1.x
+        kafkaContainer.start();
+        kafkaBootstrapServers = kafkaContainer.getBootstrapServers(); //TODO maybe this could be changed to a hardcoded address like localhost:9092
     }
 
     public void stopContainers() {
-        kafka.stop();
+        kafkaContainer.stop();
         elasticsearchContainer.stop();
     }
 
-    CompletionStage<Done> writeToKafka(String topic, List<Movie> movies, ActorSystem actorSystem, Materializer materializer) {
+    CompletionStage<Done> writeToKafka(String topic, List<Movement> movements, ActorSystem actorSystem, Materializer materializer) {
         ProducerSettings<Integer, String> kafkaProducerSettings =
-                ProducerSettings.create(actorSystem, new IntegerSerializer(), new StringSerializer())
+                ProducerSettings.create(actorSystem, new IntegerSerializer(), new StringSerializer()) //<Integer, String> due to being persisted as id and json with the object
                         .withBootstrapServers(kafkaBootstrapServers);
 
         CompletionStage<Done> producing =
-                Source.from(movies)
+                Source.from(movements)
                         .map(
-                                movie -> {
-                                    log.debug("producing {}", movie);
-                                    String json = JsonMappers.movieWriter.writeValueAsString(movie);
-                                    return new ProducerRecord<>(topic, movie.id, json);
+                                movement -> {
+                                    log.debug("producing {}", movement);
+                                    String json = JsonMappers.movementWriter.writeValueAsString(movement);
+                                    return new ProducerRecord<>(topic, movement.id, json);
                                 })
                         .runWith(Producer.plainSink(kafkaProducerSettings), materializer);
         producing.thenAccept(s -> log.info("Producing finished"));
         return producing;
     }
 
-    CompletionStage<List<Movie>> readFromElasticsearch(RestClient elasticsearchClient, String indexName, ActorSystem actorSystem, Materializer materializer) {
-        CompletionStage<List<Movie>> reading =
+    CompletionStage<List<Movement>> readFromElasticsearch(RestClient elasticsearchClient, String indexName, Materializer materializer) {
+        CompletionStage<List<Movement>> reading =
                 ElasticsearchSource.typed(
                         indexName,
                         "_doc",
                         "{\"match_all\": {}}",
                         ElasticsearchSourceSettings.create(),
                         elasticsearchClient,
-                        Movie.class)
-                        .map(readResult -> readResult.source())
+                        Movement.class)
+                        .map(ReadResult::source)
                         .runWith(Sink.seq(), materializer);
         reading.thenAccept(
-                non -> {
-                    log.info("Reading finished");
-                });
+                non -> log.info("Reading finished"));
         return reading;
     }
-
 
 }
