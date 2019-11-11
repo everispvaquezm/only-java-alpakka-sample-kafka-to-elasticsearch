@@ -39,11 +39,11 @@ public class Helper {
         elasticsearchContainer =
                 new ElasticsearchContainer("docker.elastic.co/elasticsearch/elasticsearch-oss:6.4.3");
         elasticsearchContainer.start();
-        elasticsearchAddress = elasticsearchContainer.getHttpHostAddress(); //TODO maybe this could be changed to a hardcoded address like localhost:5681
+        elasticsearchAddress = elasticsearchContainer.getHttpHostAddress();
 
         kafkaContainer = new KafkaContainer("5.1.2"); // contains Kafka 2.1.x
         kafkaContainer.start();
-        kafkaBootstrapServers = kafkaContainer.getBootstrapServers(); //TODO maybe this could be changed to a hardcoded address like localhost:9092
+        kafkaBootstrapServers = kafkaContainer.getBootstrapServers();
     }
 
     public void stopContainers() {

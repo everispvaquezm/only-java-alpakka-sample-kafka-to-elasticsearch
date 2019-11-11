@@ -122,8 +122,8 @@ public class Main {
         // #es-setup
 
         List<Movement> movements = Arrays.asList(
-          new Movement((int) (Math.random() * 100), UUID.randomUUID().toString(), 100d),
-          new Movement((int) (Math.random() * 100), UUID.randomUUID().toString(), 300d));
+          new Movement((int) (Math.random() * 100) + 1, UUID.randomUUID().toString(), 100d),
+          new Movement((int) (Math.random() * 100) + 1, UUID.randomUUID().toString(), 300d));
         CompletionStage<Done> writing = helper.writeToKafka(topic, movements, actorSystem, materializer);
         writing.toCompletableFuture().get(10, TimeUnit.SECONDS);
 
