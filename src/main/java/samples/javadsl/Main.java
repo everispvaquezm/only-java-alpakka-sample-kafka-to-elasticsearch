@@ -46,8 +46,8 @@ public class Main {
     private final String elasticsearchAddress;
     private final String kafkaBootstrapServers;
 
-    private final String topic = "movies-to-elasticsearch";
-    private final String groupId = "docs-group";
+    private static final String TOPIC = "movies-to-elasticsearch";
+    private static final String GROUPID = "docs-group";
 
     // #es-setup
     private final String indexName = "movies";
@@ -67,17 +67,17 @@ public class Main {
     private Consumer.DrainingControl<Done> readFromKafkaToEleasticsearch() {
         // #kafka-setup
         // configure Kafka consumer (1)
-        ConsumerSettings<Integer, String> kafkaConsumerSettings =
+        ConsumerSettings<Integer, String> consumerSettings =
                 ConsumerSettings.create(actorSystem, new IntegerDeserializer(), new StringDeserializer())
                         .withBootstrapServers(kafkaBootstrapServers)
-                        .withGroupId(groupId)
+                        .withGroupId(GROUPID)
                         .withProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest")
                         .withStopTimeout(Duration.ofSeconds(5));
         // #kafka-setup
 
         // #flow
         Consumer.DrainingControl<Done> control =
-                Consumer.committableSource(kafkaConsumerSettings, Subscriptions.topics(topic)) // (5)
+                Consumer.committableSource(consumerSettings, Subscriptions.topics(TOPIC)) // (5)
                         .asSourceWithContext(cm -> cm.committableOffset()) // (6)
                         .map(cm -> cm.record())
                         .map(
@@ -122,7 +122,7 @@ public class Main {
         // #es-setup
 
         List<Movie> movies = Arrays.asList(new Movie(23, "Psycho"), new Movie(423, "Citizen Kane"));
-        CompletionStage<Done> writing = helper.writeToKafka(topic, movies, actorSystem, materializer);
+        CompletionStage<Done> writing = helper.writeToKafka(TOPIC, movies, actorSystem, materializer);
         writing.toCompletableFuture().get(10, TimeUnit.SECONDS);
 
         Consumer.DrainingControl<Done> control = readFromKafkaToEleasticsearch();
@@ -147,6 +147,7 @@ public class Main {
     public static void main(String[] args) throws Exception {
         Helper helper = new Helper();
         helper.startContainers();
+        
         Main main = new Main(helper);
         CompletionStage<Terminated> run = main.run();
         run.thenAccept(res -> {

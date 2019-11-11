@@ -28,7 +28,7 @@ public class Helper {
     private ElasticsearchContainer elasticsearchContainer;
     public String elasticsearchAddress;
 
-    private KafkaContainer kafka;
+    private KafkaContainer kafkaContainer;
     public String kafkaBootstrapServers;
 
     public Helper() {
@@ -40,13 +40,13 @@ public class Helper {
         elasticsearchContainer.start();
         elasticsearchAddress = elasticsearchContainer.getHttpHostAddress();
 
-        kafka = new KafkaContainer("5.1.2"); // contains Kafka 2.1.x
-        kafka.start();
-        kafkaBootstrapServers = kafka.getBootstrapServers();
+        kafkaContainer = new KafkaContainer("5.1.2"); // contains Kafka 2.1.x
+        kafkaContainer.start();
+        kafkaBootstrapServers = kafkaContainer.getBootstrapServers();
     }
 
     public void stopContainers() {
-        kafka.stop();
+        kafkaContainer.stop();
         elasticsearchContainer.stop();
     }
 
