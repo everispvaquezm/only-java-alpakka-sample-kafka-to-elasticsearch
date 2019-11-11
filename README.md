@@ -5,4 +5,5 @@ To execute this little demo,
 
 mvn clean compile exec:java -Dexec.mainClass=samples.javadsl.Main
 
-
+It's issuing a final exception but I think is reading from kafka and writing to Elastic search ...
+ 
