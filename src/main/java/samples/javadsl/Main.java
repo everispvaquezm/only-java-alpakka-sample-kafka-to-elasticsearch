@@ -48,6 +48,7 @@ public class Main {
 
     private static final String TOPIC = "movies-to-elasticsearch";
     private static final String GROUPID = "docs-group";
+    private static final int GENEROUS_TIMEOUT_FOR_GET_TO_COMPLETE = 30;
 
     // #es-setup
     private final String indexName = "movies";
@@ -123,12 +124,12 @@ public class Main {
 
         List<Movie> movies = Arrays.asList(new Movie(23, "Psycho"), new Movie(423, "Citizen Kane"));
         CompletionStage<Done> writing = helper.writeToKafka(TOPIC, movies, actorSystem, materializer);
-        writing.toCompletableFuture().get(10, TimeUnit.SECONDS);
+        writing.toCompletableFuture().get(GENEROUS_TIMEOUT_FOR_GET_TO_COMPLETE, TimeUnit.SECONDS);
 
         Consumer.DrainingControl<Done> control = readFromKafkaToEleasticsearch();
         TimeUnit.SECONDS.sleep(5);
         CompletionStage<Done> copyingFinished = control.drainAndShutdown(actorSystem.dispatcher());
-        copyingFinished.toCompletableFuture().get(10, TimeUnit.SECONDS);
+        copyingFinished.toCompletableFuture().get(GENEROUS_TIMEOUT_FOR_GET_TO_COMPLETE, TimeUnit.SECONDS);
         CompletionStage<List<Movie>> reading = helper.readFromElasticsearch(elasticsearchClient, indexName, actorSystem, materializer);
 
         return reading.thenCompose(
