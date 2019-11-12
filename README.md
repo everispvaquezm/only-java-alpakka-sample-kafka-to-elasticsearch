@@ -7,3 +7,6 @@ mvn clean compile exec:java -Dexec.mainClass=samples.javadsl.Main
 
 It's issuing a final exception but I think is reading from kafka and writing to Elastic search ...
  
+-----
+To load a local configuration, run the application with this VM arguments:
+-Dconfig.file=src/main/resources/application-local.conf
